@@ -20,11 +20,19 @@ all unitary orbital rotations U:
 Notation
 --------
   h2 tensors : chemist's notation  (pq|rs)
-  rdm2 tensors: physicist's notation  <p†r†sq>  (prqs axis order)
-  1-RDM: γ[p,q] = <q†p>
+  rdm2 tensors: physicist's notation  <p†r†sq>
 
-  Correct contraction:
-    E_2body = 0.5 * einsum('pqrs, prqs ->', h2_chem, rdm2_phys)
+  Two storage conventions are in use:
+    pqrs-storage (PySCF / qiskit_addon_sqd): rdm2[p,q,r,s] = <p†r†sq>
+      Correct contraction: 0.5 * einsum('pqrs,pqrs->', h2_chem, rdm2_pqrs)
+    prqs-storage (internal): rdm2[p,r,q,s] = <p†r†sq>
+      Correct contraction: 0.5 * einsum('pqrs,prqs->', h2_chem, rdm2_prqs)
+
+  solve_fermion / PySCF make_rdm2s return pqrs-storage.
+  This module internally uses prqs-storage; the public API accepts pqrs-storage
+  and converts automatically (rdm2_prqs = rdm2_pqrs.transpose(0,2,1,3)).
+
+  1-RDM: γ[p,q] = <q†p>
 
 Rotation convention (consistent with orbital_optimizer_uhf.py)
 ----------------------------------------------------------------
@@ -248,6 +256,7 @@ def optimize_orbitals(
     maxiter: int = 300,
     ftol: float = 1e-15,
     gtol: float = 1e-10,
+    rdm2_notation: str = "pqrs",
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """Find the orbital rotation that minimizes the SCI energy expectation value.
 
@@ -264,7 +273,7 @@ def optimize_orbitals(
         Alpha and beta 1-RDMs in physicist's convention: γ[p,q] = <q†p>.
         For RHF, pass the spin-resolved blocks (or sum them for the spin-free path).
     rdm2_aa:
-        Alpha-alpha 2-RDM in physicist's convention: <p†r†sq>, prqs axis order.
+        Alpha-alpha 2-RDM in physicist's convention: <p†r†sq>.
     rdm2_ab:
         Alpha-beta 2-RDM (physicist's). If None, uses rdm2_aa (spin-free approx).
     rdm2_bb:
@@ -275,6 +284,15 @@ def optimize_orbitals(
         Maximum optimizer iterations.
     ftol, gtol:
         Convergence tolerances for L-BFGS-B.
+    rdm2_notation : {"pqrs", "prqs"}
+        Storage convention of the input 2-RDMs.
+        ``"pqrs"`` (default): PySCF / qiskit_addon_sqd convention —
+            rdm2[p,q,r,s] = <p†r†sq>, correct contraction is
+            ``einsum('pqrs,pqrs->', h2_chem, rdm2)``.
+        ``"prqs"``: internal convention —
+            rdm2[p,r,q,s] = <p†r†sq>, correct contraction is
+            ``einsum('pqrs,prqs->', h2_chem, rdm2)``.
+        ``solve_fermion`` and PySCF ``make_rdm2s`` return pqrs-storage.
 
     Returns
     -------
@@ -294,6 +312,16 @@ def optimize_orbitals(
         rdm2_ab = rdm2_aa
     if rdm2_bb is None:
         rdm2_bb = rdm2_aa
+
+    # Convert pqrs-storage (PySCF/solver) to prqs-storage (internal convention).
+    # prqs[p,r,q,s] = pqrs[p,q,r,s].transpose(0,2,1,3)
+    # prqs-storage satisfies: 0.5 * einsum('pqrs,prqs->', h2_chem, rdm2_prqs)
+    if rdm2_notation == "pqrs":
+        rdm2_aa = np.asarray(rdm2_aa).transpose(0, 2, 1, 3)
+        rdm2_ab = np.asarray(rdm2_ab).transpose(0, 2, 1, 3)
+        rdm2_bb = np.asarray(rdm2_bb).transpose(0, 2, 1, 3)
+    elif rdm2_notation != "prqs":
+        raise ValueError(f"rdm2_notation must be 'pqrs' or 'prqs', got {rdm2_notation!r}")
 
     if elec_props.unrestricted:
         h1_b  = elec_props.one_body_tensor_b

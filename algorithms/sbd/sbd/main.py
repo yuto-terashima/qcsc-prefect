@@ -196,6 +196,8 @@ def riken_sqd_de(
                     i, elec_props.num_orbitals, unrestricted,
                 )
                 try:
+                    # solver_job writes rdm2 files in prqs-storage (physicist's, prqs axis order).
+                    # orbital_opt.optimize_orbitals expects rdm2_notation to be declared explicitly.
                     Ua, Ub, e_opt = optimize_orbitals(
                         elec_props=elec_props,
                         rdm1_aa=rdm1_aa,
@@ -203,6 +205,7 @@ def riken_sqd_de(
                         rdm2_aa=rdm2_aa,
                         rdm2_ab=rdm2_ab,
                         rdm2_bb=rdm2_bb,
+                        rdm2_notation="prqs",
                     )
                     logger.info(
                         "Trial %d: orbital optimization energy = %.10f Ha", i, e_opt

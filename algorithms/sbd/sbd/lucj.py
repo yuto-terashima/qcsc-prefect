@@ -105,8 +105,6 @@ def _initialize_ucj_parameters_uhf(
             t2=t2,
             n_reps=n_lucj_layers + 1,
             interaction_pairs=interaction_pairs,
-            optimize=True,
-            options={"maxiter": 50},
         )
         truncated_ucj_op = ffsim.UCJOpSpinUnbalanced(
             diag_coulomb_mats=tmp_operator.diag_coulomb_mats[:-1],
